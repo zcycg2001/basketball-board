@@ -1,1 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1,user-scalable=no">
+<title>篮球战术板-开源版</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#222;display:flex;flex-direction:column;align-items:center;padding:10px}
+canvas{border:2px solid #fff;background:#398039}
+#btns{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:700px}
+button{padding:8px 14px;font-size:14px;border:none;border-radius:4px}
+</style>
+</head>
+<body>
+<canvas id="court"></canvas>
+<div id="btns">
+    <button id="reset">重置站位</button>
+    <button id="clearLine">清除箭头</button>
+</div>
+<script>
+const canvas = document.getElementById("court");
+const ctx = canvas.getContext("2d");
+//基准尺寸
+const BASE_W=700,BASE_H=450;
+let scale=1;
+let players = [
+    {x:120,y:200,color:"red",num:1},
+    {x:180,y:280,color:"red",num:2},
+    {x:240,y:150,color:"red",num:3},
+    {x:300,y:320,color:"red",num:4},
+    {x:160,y:360,color:"red",num:5},
+    {x:420,y:180,color:"blue",num:6},
+    {x:480,y:250,color:"blue",num:7},
+    {x:540,y:330,color:"blue",num:8},
+    {x:500,y:130,color:"blue",num:9},
+    {x:580,y:220,color:"blue",num:10},
+];
+let dragPlayer=null;
+let drawStart=null,drawTemp=null;
+let lines=[];
 
+//自适应
+function resize(){
+    let w = window.innerWidth -20;
+    if(w>700) w=700;
+    scale = w / BASE_W;
+    canvas.width=BASE_W*scale;
+    canvas.height=BASE_H*scale;
+    canvas.style.width=canvas.width+"px";
+    canvas.style.height=canvas.height+"px";
+    redraw();
+}
+
+//画标准半场
+function drawCourt(){
+    const W=canvas.width,H=canvas.height;
+    ctx.fillStyle="#398039";
+    ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle="#fff";
+    ctx.lineWidth=2*scale;
+    //外框
+    ctx.strokeRect(20*scale,20*scale,W-40*scale,H-40*scale);
+    //中线
+    ctx.beginPath();
+    ctx.moveTo(W/2,20*scale);
+    ctx.lineTo(W/2,H-20*scale);
+    ctx.stroke();
+    //中圈
+    ctx.beginPath();
+    ctx.arc(W/2,H/2,70*scale,0,Math.PI*2);
+    ctx.stroke();
+    //右侧篮筐区域
+    const hoopX = W-80*scale;
+    const hoopY = H/2;
+    ctx.beginPath();
+    ctx.arc(hoopX,hoopY,80*scale,0,Math.PI*2);
+    ctx.stroke();
+    //三分线
+    ctx.beginPath();
+    ctx.arc(hoopX,hoopY,200*scale,Math.PI*0.7, -Math.PI*0.7);
+    ctx.stroke();
+}
+
+//箭头函数
+function drawArrow(p1,p2){
+    ctx.beginPath();
+    ctx.moveTo(p1.x,p1.y);
+    ctx.lineTo(p2.x,p2.y);
+    ctx.stroke();
+    let ang=Math.atan2(p2.y-p1.y,p2.x-p1.x);
+    const arr=12*scale;
+    ctx.beginPath();
+    ctx.moveTo(p2.x,p2.y);
+    ctx.lineTo(p2.x-arr*Math.cos(ang-0.4),p2.y-arr*Math.sin(ang-0.4));
+    ctx.moveTo(p2.x,p2.y);
+    ctx.lineTo(p2.x-arr*Math.cos(ang+0.4),p2.y-arr*Math.sin(ang+0.4));
+    ctx.stroke();
+}
+
+function redraw(){
+    drawCourt();
+    ctx.lineWidth=3*scale;
+    ctx.strokeStyle="#fff";
+    lines.forEach(l=>drawArrow(l.s,l.e));
+    if(drawStart&&drawTemp){
+        ctx.strokeStyle="#ffdd44";
+        drawArrow(drawStart,drawTemp);
+    }
+    //球员
+    players.forEach(p=>{
+        ctx.beginPath();
+        ctx.arc(p.x*scale,p.y*scale,18*scale,0,Math.PI*2);
+        ctx.fillStyle=p.color;
+        ctx.fill();
+        ctx.strokeStyle="#fff";
+        ctx.stroke();
+        ctx.fillStyle="#fff";
+        ctx.font=`bold ${18*scale}px Arial`;
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
+        ctx.fillText(p.num,p.x*scale,p.y*scale);
+    })
+}
+
+//坐标转换
+function getPos(e){
+    const rect=canvas.getBoundingClientRect();
+    let cx,cy;
+    if(e.touches){
+        cx=e.touches[0].clientX;cy=e.touches[0].clientY;
+    }else{
+        cx=e.clientX;cy=e.clientY;
+    }
+    return {x:(cx-rect.left)/scale,y:(cy-rect.top)/scale}
+}
+
+function pointerDown(e){
+    e.preventDefault();
+    let p=getPos(e);
+    dragPlayer=null;
+    for(let pl of players){
+        let dx=p.x-pl.x, dy=p.y-pl.y;
+        if(dx*dx+dy*dy < 20*20){
+            dragPlayer=pl;
+            return;
+        }
+    }
+    drawStart = p; drawTemp=p;
+}
+function pointerMove(e){
+    e.preventDefault();
+    let p=getPos(e);
+    if(dragPlayer){
+        dragPlayer.x=p.x; dragPlayer.y=p.y; redraw();
+        return;
+    }
+    if(drawStart){
+        drawTemp=p; redraw();
+    }
+}
+function pointerUp(e){
+    if(dragPlayer){dragPlayer=null;return;}
+    if(drawStart&&drawTemp){
+        lines.push({s:drawStart,e:drawTemp})
+    }
+    drawStart=null;drawTemp=null;
+    redraw();
+}
+//鼠标+触屏
+canvas.addEventListener("mousedown",pointerDown);
+canvas.addEventListener("mousemove",pointerMove);
+canvas.addEventListener("mouseup",pointerUp);
+canvas.addEventListener("touchstart",pointerDown);
+canvas.addEventListener("touchmove",pointerMove);
+canvas.addEventListener("touchend",pointerUp);
+
+//按钮
+document.getElementById("reset").onclick=()=>{
+    players = [
+        {x:120,y:200,color:"red",num:1},
+        {x:180,y:280,color:"red",num:2},
+        {x:240,y:150,color:"red",num:3},
+        {x:300,y:320,color:"red",num:4},
+        {x:160,y:360,color:"red",num:5},
+        {x:420,y:180,color:"blue",num:6},
+        {x:480,y:250,color:"blue",num:7},
+        {x:540,y:330,color:"blue",num:8},
+        {x:500,y:130,color:"blue",num:9},
+        {x:580,y:220,color:"blue",num:10},
+    ];
+    redraw();
+}
+document.getElementById("clearLine").onclick=()=>{lines=[];redraw()}
+window.addEventListener("resize",resize);
+resize();
+</script>
+</body>
+</html>
